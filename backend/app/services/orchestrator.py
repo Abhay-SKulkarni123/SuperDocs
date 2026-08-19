@@ -5,6 +5,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from backend.app.agents.analyzer import AnalyzerAgent
+from backend.app.agents.extraction import run_extraction
 from backend.app.models.run import ProcessingStage, Run, RunStatus
 
 
@@ -16,7 +18,10 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _set_stage(run: Run, stage: ProcessingStage) -> None:
+def _set_stage(
+    run: Run,
+    stage: ProcessingStage,
+) -> None:
     run.current_stage = stage
     run.updated_at = _utcnow()
 
@@ -45,16 +50,32 @@ def _fail(run: Run, error: Exception) -> None:
 
 def process_run(db: Session, run_id: UUID) -> Run:
     """
-    Execute the persisted SuperDocs workflow.
+    Execute the complete persisted SuperDocs workflow.
 
-    The workflow is intentionally stage-oriented so each stage can later
-    be replaced by a richer agent/service without changing the run model.
+    Workflow:
+
+        INGEST
+          ↓
+        EXTRACT
+          ↓
+        ANALYZE
+          ↓
+        REVIEW
+          ↓
+        COMMIT
+          ↓
+        COMPLETE
+
+    The orchestrator owns workflow state and delegates actual work
+    to specialized agents/services.
     """
 
     run = db.get(Run, run_id)
 
     if run is None:
-        raise OrchestrationError(f"Run {run_id} was not found")
+        raise OrchestrationError(
+            f"Run {run_id} was not found"
+        )
 
     if run.status == RunStatus.COMPLETED:
         return run
@@ -64,75 +85,114 @@ def process_run(db: Session, run_id: UUID) -> Run:
             f"Run {run_id} is already being processed"
         )
 
-    _set_running(run)
-    db.commit()
-    db.refresh(run)
+    if not run.documents:
+        raise OrchestrationError(
+            "Cannot process run without documents"
+        )
+
+    document = run.documents[0]
 
     try:
-        # ---------------------------------------------------------
+        # =========================================================
+        # START
+        # =========================================================
+
+        _set_running(run)
+        db.commit()
+
+        # =========================================================
         # INGEST
-        # ---------------------------------------------------------
+        # =========================================================
+
         _set_stage(run, ProcessingStage.INGEST)
         db.commit()
 
-        # The document ingestion work is already represented by the
-        # persisted Document model. This stage currently validates
-        # that the run has documents associated with it.
-        if not run.documents:
-            raise OrchestrationError(
-                "Cannot process run without documents"
-            )
+        # The document has already been persisted by the ingestion
+        # layer. At this point we validate that the workflow has a
+        # document to process.
 
-        # ---------------------------------------------------------
+        # =========================================================
         # EXTRACT
-        # ---------------------------------------------------------
+        # =========================================================
+
         _set_stage(run, ProcessingStage.EXTRACT)
         db.commit()
 
-        # Extraction is currently performed by the existing document
-        # processing service. The orchestrator owns the workflow,
-        # while the individual service owns the actual work.
+        extracted_text = run_extraction(
+            document.storage_reference,
+            document.mime_type,
+        )
 
-        # ---------------------------------------------------------
+        document.extracted_text = extracted_text
+
+        db.commit()
+
+        # =========================================================
         # ANALYZE
-        # ---------------------------------------------------------
+        # =========================================================
+
         _set_stage(run, ProcessingStage.ANALYZE)
         db.commit()
 
-        # Analysis is likewise delegated to the analysis service.
+        analyzer = AnalyzerAgent()
+        analysis = analyzer.analyze(extracted_text)
 
-        # ---------------------------------------------------------
+        document.summary = analysis.summary
+        document.word_count = analysis.word_count
+        document.character_count = analysis.character_count
+        document.sentence_count = analysis.sentence_count
+
+        db.commit()
+
+        # =========================================================
         # REVIEW
-        # ---------------------------------------------------------
+        # =========================================================
+
         _set_stage(run, ProcessingStage.REVIEW)
         db.commit()
 
-        # Review is intentionally a persisted workflow boundary.
-        # Human approval will be attached here in Phase 10.
+        # Review is currently an explicit workflow boundary.
+        #
+        # Phase 10 can introduce human approval / review decisions
+        # without changing extraction or analysis.
 
-        # ---------------------------------------------------------
+        # =========================================================
         # COMMIT
-        # ---------------------------------------------------------
+        # =========================================================
+
         _set_stage(run, ProcessingStage.COMMIT)
         db.commit()
 
-        # Commit becomes the point at which approved results are
-        # persisted as final output.
+        # The extracted content and analysis results are already
+        # persisted on the Document record. COMMIT represents the
+        # final workflow persistence boundary.
 
-        # ---------------------------------------------------------
+        # =========================================================
         # COMPLETE
-        # ---------------------------------------------------------
+        # =========================================================
+
         _complete(run)
         db.commit()
+
+        db.refresh(document)
         db.refresh(run)
 
         return run
 
+    except OrchestrationError:
+        db.rollback()
+
+        run = db.get(Run, run_id)
+
+        if run is not None:
+            _fail(run, OrchestrationError("Run orchestration failed"))
+            db.commit()
+
+        raise
+
     except Exception as exc:
         db.rollback()
 
-        # Re-fetch after rollback because SQLAlchemy may have expired
-        # the current object state.
         run = db.get(Run, run_id)
 
         if run is None:
