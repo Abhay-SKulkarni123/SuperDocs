@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
 
@@ -67,16 +69,18 @@ class Document(Base):
     )
 
     word_count: Mapped[int | None] = mapped_column(
-        Integer,
         nullable=True,
     )
 
     character_count: Mapped[int | None] = mapped_column(
-        Integer,
         nullable=True,
     )
 
     sentence_count: Mapped[int | None] = mapped_column(
-        Integer,
         nullable=True,
+    )
+
+    run: Mapped["Run"] = relationship(
+        "Run",
+        back_populates="documents",
     )
