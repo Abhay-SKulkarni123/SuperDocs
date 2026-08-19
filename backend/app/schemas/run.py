@@ -1,20 +1,15 @@
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict
-
 from backend.app.models.run import ProcessingStage, RunStatus
 
-
-class RunCreateResponse(BaseModel):
-    id: uuid.UUID
-    status: RunStatus
-    current_stage: ProcessingStage
-
-    model_config = ConfigDict(from_attributes=True)
+class RunCreate(BaseModel):
+    pass
 
 
 class RunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     status: RunStatus
     current_stage: ProcessingStage
@@ -23,5 +18,3 @@ class RunResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
-
-    model_config = ConfigDict(from_attributes=True)

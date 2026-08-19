@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from backend.app.api.runs import router as runs_router
 
 from backend.app.core.database import check_database_connection
 
@@ -8,6 +9,8 @@ app = FastAPI(
     description="Agentic document analysis and workflow platform",
     version="0.1.0",
 )
+
+app.include_router(runs_router)
 
 app.add_middleware(
     CORSMiddleware,
