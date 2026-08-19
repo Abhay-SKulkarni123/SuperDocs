@@ -1,9 +1,9 @@
 from backend.app.db.base import Base
-from backend.app.models.document import Document
-from backend.app.models.run import Run
+from backend.app.db.session import SessionLocal, engine, get_db
 
 __all__ = [
     "Base",
-    "Document",
-    "Run",
+    "SessionLocal",
+    "engine",
+    "get_db",
 ]

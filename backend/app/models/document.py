@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,11 +47,36 @@ class Document(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=datetime.utcnow,
         nullable=False,
     )
 
     metadata_json: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    extracted_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    summary: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    word_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    character_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    sentence_count: Mapped[int | None] = mapped_column(
+        Integer,
         nullable=True,
     )
