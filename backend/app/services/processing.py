@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from backend.app.agents.extraction import run_extraction
+from backend.app.agents.workflow import document_workflow
 from backend.app.models.document import Document
 from backend.app.models.run import ProcessingStage, Run, RunStatus
 
@@ -29,11 +30,9 @@ def process_run(db: Session, run_id: UUID) -> str:
         raise ProcessingError(f"No document found for run {run_id}")
 
     try:
-        started_at = datetime.now(timezone.utc)
-
         run.status = RunStatus.RUNNING
         run.current_stage = ProcessingStage.EXTRACT
-        run.started_at = started_at
+        run.started_at = datetime.now(timezone.utc)
 
         db.commit()
 
@@ -44,9 +43,29 @@ def process_run(db: Session, run_id: UUID) -> str:
 
         document.extracted_text = extracted_text
 
+        run.current_stage = ProcessingStage.ANALYZE
+        run.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+
+        analysis_result = document_workflow.invoke(
+            {
+                "run_id": str(run.id),
+                "document_id": str(document.id),
+                "text": extracted_text,
+                "status": "extracted",
+            }
+        )
+
+        document.summary = analysis_result["summary"]
+        document.word_count = analysis_result["word_count"]
+        document.character_count = analysis_result["character_count"]
+        document.sentence_count = analysis_result["sentence_count"]
+
         run.status = RunStatus.COMPLETED
         run.current_stage = ProcessingStage.COMPLETE
         run.completed_at = datetime.now(timezone.utc)
+        run.updated_at = datetime.now(timezone.utc)
 
         db.commit()
 
@@ -66,6 +85,7 @@ def process_run(db: Session, run_id: UUID) -> str:
         if run is not None:
             run.status = RunStatus.FAILED
             run.error_message = str(exc)
+            run.updated_at = datetime.now(timezone.utc)
             db.commit()
 
         raise ProcessingError(str(exc)) from exc

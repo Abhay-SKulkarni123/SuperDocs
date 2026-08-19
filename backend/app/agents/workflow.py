@@ -1,18 +1,18 @@
 from langgraph.graph import END, START, StateGraph
 
+from backend.app.agents.analyzer import run_analysis
 from backend.app.agents.state import DocumentState
-from backend.app.services.analysis import analyze_text
 
 
 def analyze_document(state: DocumentState) -> DocumentState:
-    result = analyze_text(state["text"])
+    result = run_analysis(state["text"])
 
     return {
         **state,
-        "summary": result["summary"],
-        "word_count": result["word_count"],
-        "character_count": result["character_count"],
-        "sentence_count": result["sentence_count"],
+        "summary": result.summary,
+        "word_count": result.word_count,
+        "character_count": result.character_count,
+        "sentence_count": result.sentence_count,
         "status": "analyzed",
     }
 
