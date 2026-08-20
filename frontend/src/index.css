@@ -42,3 +42,118 @@ button {
 #root {
   min-height: 100vh;
 }
+
+.run-section {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid #e1e6eb;
+}
+
+.run-section h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.run-description {
+  margin: 0 0 18px;
+  color: #68737d;
+  font-size: 14px;
+}
+
+.run-section button {
+  border: none;
+  border-radius: 8px;
+  padding: 11px 18px;
+  background: #17202a;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.run-section button:hover {
+  opacity: 0.9;
+}
+
+.run-section button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.run-details {
+  display: grid;
+  gap: 14px;
+}
+
+.run-details > div {
+  padding: 12px 14px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.run-details span {
+  display: block;
+  margin-bottom: 4px;
+  color: #68737d;
+  font-size: 12px;
+}
+
+.run-details strong {
+  display: block;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.error-message {
+  margin: 12px 0 0;
+  color: #d64545;
+  font-size: 14px;
+}
+
+.document-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e1e6eb;
+}
+
+.document-section h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.upload-control {
+  display: block;
+  padding: 16px;
+  border: 1px dashed #cbd2d8;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  color: #68737d;
+  font-size: 14px;
+}
+
+.upload-control:hover {
+  border-color: #17202a;
+}
+
+.upload-control input {
+  display: none;
+}
+
+.document-details {
+  padding: 12px 14px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.document-details span {
+  display: block;
+  margin-bottom: 4px;
+  color: #68737d;
+  font-size: 12px;
+}
+
+.document-details strong {
+  font-size: 14px;
+  word-break: break-word;
+}

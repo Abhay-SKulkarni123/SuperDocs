@@ -125,11 +125,16 @@ function App() {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState(null);
   const [checking, setChecking] = useState(true);
+
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+
+  // Keep the created workflow available after upload.
+  const [activeRun, setActiveRun] = useState(null);
+  const [activeDocument, setActiveDocument] = useState(null);
 
   useEffect(() => {
     async function checkHealth() {
@@ -232,6 +237,7 @@ function App() {
 
         try {
           const errorData = await documentResponse.json();
+
           if (errorData.detail) {
             message = errorData.detail;
           }
@@ -243,6 +249,10 @@ function App() {
       }
 
       const document = await documentResponse.json();
+
+      // Persist the active workflow in the frontend.
+      setActiveRun(run);
+      setActiveDocument(document);
 
       setUploadSuccess({
         run,
@@ -384,7 +394,11 @@ function App() {
               }
             />
 
-            <HealthCard label="Workflow" value="Ready" status="connected" />
+            <HealthCard
+              label="Workflow"
+              value={activeRun ? activeRun.status : "Ready"}
+              status={activeRun ? "connected" : "connected"}
+            />
           </section>
 
           <section className="activity-section">
@@ -400,7 +414,18 @@ function App() {
               </button>
             </div>
 
-            <EmptyActivity />
+            {activeRun && activeDocument ? (
+              <div className="empty-activity">
+                <div className="empty-icon">✓</div>
+
+                <div>
+                  <h3>{activeDocument.filename}</h3>
+                  <p>Workflow created · Run {activeRun.id}</p>
+                </div>
+              </div>
+            ) : (
+              <EmptyActivity />
+            )}
           </section>
         </main>
       </div>
@@ -411,7 +436,9 @@ function App() {
             <div className="upload-dialog-header">
               <div>
                 <div className="eyebrow">NEW WORKFLOW</div>
+
                 <h2>Upload a document</h2>
+
                 <p>
                   Choose a PDF or text document to start a new analysis
                   workflow.
@@ -496,6 +523,11 @@ function App() {
                   <div>
                     <span>Status</span>
                     <strong>{uploadSuccess.run.status}</strong>
+                  </div>
+
+                  <div>
+                    <span>Stage</span>
+                    <strong>{uploadSuccess.run.current_stage}</strong>
                   </div>
                 </div>
 
