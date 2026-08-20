@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from backend.app.models.run import ProcessingStage, Run, RunStatus
 
 
@@ -25,3 +27,12 @@ def create_run(db: Session) -> Run:
 def get_run(db: Session, run_id: uuid.UUID) -> Run | None:
     statement = select(Run).where(Run.id == run_id)
     return db.scalar(statement)
+
+
+def list_runs(db: Session) -> list[Run]:
+    statement = (
+        select(Run)
+        .order_by(Run.created_at.desc())
+    )
+
+    return list(db.scalars(statement).all())

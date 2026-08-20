@@ -26,6 +26,12 @@ class ProcessingStage(str, enum.Enum):
     COMPLETE = "complete"
 
 
+class ReviewStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Run(Base):
     __tablename__ = "runs"
 
@@ -44,6 +50,12 @@ class Run(Base):
     current_stage: Mapped[ProcessingStage] = mapped_column(
         Enum(ProcessingStage, name="processing_stage"),
         default=ProcessingStage.INGEST,
+        nullable=False,
+    )
+
+    review_status: Mapped[ReviewStatus] = mapped_column(
+        Enum(ReviewStatus, name="review_status"),
+        default=ReviewStatus.PENDING,
         nullable=False,
     )
 

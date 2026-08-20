@@ -1,9 +1,18 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
 from backend.app.db.session import get_db
 from backend.app.schemas.run import RunResponse
+from backend.app.services.orchestrator import (
+    OrchestrationError,
+    approve_run,
+    process_run,
+    reject_run,
+)
 from backend.app.services.run_service import create_run, get_run
+
 
 router = APIRouter(
     prefix="/runs",
@@ -39,3 +48,76 @@ def get_existing_run(
         )
 
     return run
+
+@router.post(
+    "/{run_id}/process",
+    response_model=RunResponse,
+)
+def process_existing_run(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    try:
+        return process_run(db, run_id)
+    except OrchestrationError as exc:
+        message = str(exc)
+
+        if "was not found" in message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=message,
+        ) from exc
+
+@router.post(
+    "/{run_id}/approve",
+    response_model=RunResponse,
+)
+def approve_existing_run(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    try:
+        return approve_run(db, run_id)
+    except OrchestrationError as exc:
+        message = str(exc)
+
+        if "was not found" in message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=message,
+        ) from exc
+
+
+@router.post(
+    "/{run_id}/reject",
+    response_model=RunResponse,
+)
+def reject_existing_run(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    try:
+        return reject_run(db, run_id)
+    except OrchestrationError as exc:
+        message = str(exc)
+
+        if "was not found" in message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=message,
+        ) from exc

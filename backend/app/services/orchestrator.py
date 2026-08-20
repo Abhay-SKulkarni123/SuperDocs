@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from backend.app.agents.analyzer import AnalyzerAgent
 from backend.app.agents.extraction import run_extraction
-from backend.app.models.run import ProcessingStage, Run, RunStatus
+from backend.app.models.run import (
+    ProcessingStage,
+    ReviewStatus,
+    Run,
+    RunStatus,
+)
 
 
 class OrchestrationError(Exception):
@@ -50,7 +55,7 @@ def _fail(run: Run, error: Exception) -> None:
 
 def process_run(db: Session, run_id: UUID) -> Run:
     """
-    Execute the complete persisted SuperDocs workflow.
+    Execute the automated portion of the SuperDocs workflow.
 
     Workflow:
 
@@ -60,14 +65,13 @@ def process_run(db: Session, run_id: UUID) -> Run:
           ↓
         ANALYZE
           ↓
-        REVIEW
+        REVIEW  ← human decision
           ↓
         COMMIT
           ↓
         COMPLETE
 
-    The orchestrator owns workflow state and delegates actual work
-    to specialized agents/services.
+    The automated workflow intentionally stops at REVIEW.
     """
 
     run = db.get(Run, run_id)
@@ -108,8 +112,7 @@ def process_run(db: Session, run_id: UUID) -> Run:
         db.commit()
 
         # The document has already been persisted by the ingestion
-        # layer. At this point we validate that the workflow has a
-        # document to process.
+        # layer. This stage validates the workflow input.
 
         # =========================================================
         # EXTRACT
@@ -124,7 +127,6 @@ def process_run(db: Session, run_id: UUID) -> Run:
         )
 
         document.extracted_text = extracted_text
-
         db.commit()
 
         # =========================================================
@@ -149,46 +151,19 @@ def process_run(db: Session, run_id: UUID) -> Run:
         # =========================================================
 
         _set_stage(run, ProcessingStage.REVIEW)
+
+        run.review_status = ReviewStatus.PENDING
+        run.status = RunStatus.PAUSED
+
         db.commit()
-
-        # Review is currently an explicit workflow boundary.
-        #
-        # Phase 10 can introduce human approval / review decisions
-        # without changing extraction or analysis.
-
-        # =========================================================
-        # COMMIT
-        # =========================================================
-
-        _set_stage(run, ProcessingStage.COMMIT)
-        db.commit()
-
-        # The extracted content and analysis results are already
-        # persisted on the Document record. COMMIT represents the
-        # final workflow persistence boundary.
-
-        # =========================================================
-        # COMPLETE
-        # =========================================================
-
-        _complete(run)
-        db.commit()
-
-        db.refresh(document)
         db.refresh(run)
 
+        # The workflow deliberately stops here.
+        #
+        # A reviewer must explicitly approve or reject the result.
+        # The review API will continue the workflow.
+
         return run
-
-    except OrchestrationError:
-        db.rollback()
-
-        run = db.get(Run, run_id)
-
-        if run is not None:
-            _fail(run, OrchestrationError("Run orchestration failed"))
-            db.commit()
-
-        raise
 
     except Exception as exc:
         db.rollback()
@@ -205,3 +180,107 @@ def process_run(db: Session, run_id: UUID) -> Run:
         db.refresh(run)
 
         raise OrchestrationError(str(exc)) from exc
+
+
+def approve_run(
+    db: Session,
+    run_id: UUID,
+) -> Run:
+    """
+    Approve a run that is waiting for human review.
+
+    Approval moves the workflow through COMMIT to COMPLETE.
+    """
+
+    run = db.get(Run, run_id)
+
+    if run is None:
+        raise OrchestrationError(
+            f"Run {run_id} was not found"
+        )
+
+    if run.current_stage != ProcessingStage.REVIEW:
+        raise OrchestrationError(
+            "Run is not waiting for review"
+        )
+
+    if run.review_status != ReviewStatus.PENDING:
+        raise OrchestrationError(
+            "Run has already been reviewed"
+        )
+
+    run.review_status = ReviewStatus.APPROVED
+    run.status = RunStatus.RUNNING
+    run.updated_at = _utcnow()
+
+    db.commit()
+
+    try:
+        # =========================================================
+        # COMMIT
+        # =========================================================
+
+        _set_stage(run, ProcessingStage.COMMIT)
+        db.commit()
+
+        # Analysis results are already persisted on the Document.
+        # COMMIT represents the final approval boundary.
+
+        # =========================================================
+        # COMPLETE
+        # =========================================================
+
+        _complete(run)
+
+        db.commit()
+        db.refresh(run)
+
+        return run
+
+    except Exception as exc:
+        db.rollback()
+
+        run = db.get(Run, run_id)
+
+        if run is not None:
+            _fail(run, exc)
+            db.commit()
+            db.refresh(run)
+
+        raise OrchestrationError(str(exc)) from exc
+
+
+def reject_run(
+    db: Session,
+    run_id: UUID,
+) -> Run:
+    """
+    Reject a run that is waiting for human review.
+    """
+
+    run = db.get(Run, run_id)
+
+    if run is None:
+        raise OrchestrationError(
+            f"Run {run_id} was not found"
+        )
+
+    if run.current_stage != ProcessingStage.REVIEW:
+        raise OrchestrationError(
+            "Run is not waiting for review"
+        )
+
+    if run.review_status != ReviewStatus.PENDING:
+        raise OrchestrationError(
+            "Run has already been reviewed"
+        )
+
+    run.review_status = ReviewStatus.REJECTED
+    run.status = RunStatus.FAILED
+    run.error_message = "Run rejected during human review"
+    run.updated_at = _utcnow()
+
+    db.commit()
+    db.refresh(run)
+
+    return run
