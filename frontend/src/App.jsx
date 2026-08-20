@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -124,9 +124,16 @@ function EmptyActivity() {
 function App() {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState(null);
+
+  const [run, setRun] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowMessage, setWorkflowMessage] = useState("");
+  const [workflowError, setWorkflowError] = useState("");
+
+  const fileInputRef = useRef(null);
   const [checking, setChecking] = useState(true);
 
-  const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(null);
@@ -166,10 +173,131 @@ function App() {
   const databaseConnected = health?.database === "connected";
 
   const handleUpload = () => {
-    setUploadError(null);
-    setUploadSuccess(null);
-    setSelectedFile(null);
-    setShowUploadDialog(true);
+    setWorkflowMessage("");
+    setWorkflowError("");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setSelectedFile(file);
+    setWorkflowMessage("");
+    setWorkflowError("");
+    setWorkflowLoading(true);
+
+    try {
+      // 1. Create a processing run
+      const runResponse = await fetch(`${API_URL}/runs`, {
+        method: "POST",
+      });
+
+      if (!runResponse.ok) {
+        throw new Error("Unable to create processing run.");
+      }
+
+      const createdRun = await runResponse.json();
+
+      // 2. Upload the selected document
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadResponse = await fetch(
+        `${API_URL}/runs/${createdRun.id}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      const uploadData = await uploadResponse.json().catch(() => null);
+
+      if (!uploadResponse.ok) {
+        throw new Error(uploadData?.detail || "Unable to upload document.");
+      }
+
+      setRun(createdRun);
+      setWorkflowMessage(
+        "Document uploaded successfully. It is ready to process.",
+      );
+    } catch (error) {
+      setWorkflowError(error.message);
+    } finally {
+      setWorkflowLoading(false);
+
+      // Allow selecting the same file again later.
+      event.target.value = "";
+    }
+  };
+
+  const handleProcess = async () => {
+    if (!run) {
+      return;
+    }
+
+    setWorkflowLoading(true);
+    setWorkflowMessage("");
+    setWorkflowError("");
+
+    try {
+      const response = await fetch(`${API_URL}/runs/${run.id}/process`, {
+        method: "POST",
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.detail || "Unable to process document.");
+      }
+
+      setRun(data);
+
+      setWorkflowMessage(
+        "Analysis complete. The document is ready for review.",
+      );
+    } catch (error) {
+      setWorkflowError(error.message);
+    } finally {
+      setWorkflowLoading(false);
+    }
+  };
+
+  const handleReview = async (action) => {
+    if (!run) {
+      return;
+    }
+
+    setWorkflowLoading(true);
+    setWorkflowMessage("");
+    setWorkflowError("");
+
+    try {
+      const response = await fetch(`${API_URL}/runs/${run.id}/${action}`, {
+        method: "POST",
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.detail || `Unable to ${action} the document.`);
+      }
+
+      setRun(data);
+
+      setWorkflowMessage(
+        action === "approve"
+          ? "Document approved successfully."
+          : "Document rejected.",
+      );
+    } catch (error) {
+      setWorkflowError(error.message);
+    } finally {
+      setWorkflowLoading(false);
+    }
   };
 
   const handleFileChange = (event) => {
@@ -269,6 +397,14 @@ function App() {
 
   return (
     <div className="app-shell">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.txt,application/pdf,text/plain"
+        onChange={handleFileSelected}
+        style={{ display: "none" }}
+      />
+
       <Sidebar />
 
       <div className="main-area">
@@ -352,6 +488,102 @@ function App() {
               </div>
             </div>
           </section>
+
+          {selectedFile && (
+            <section className="workflow-panel">
+              <div className="workflow-header">
+                <div>
+                  <span className="section-kicker">DOCUMENT WORKFLOW</span>
+
+                  <h2>{selectedFile.name}</h2>
+
+                  <p>
+                    {Math.max(1, Math.round(selectedFile.size / 1024))} KB ·{" "}
+                    {selectedFile.type === "application/pdf" ? "PDF" : "TXT"}
+                  </p>
+                </div>
+
+                <div className="workflow-status">
+                  <span className="status-dot" />
+
+                  <span>{run?.status || "Preparing"}</span>
+                </div>
+              </div>
+
+              <div className="workflow-details">
+                <div>
+                  <span>Run</span>
+                  <strong>{run ? `${run.id.slice(0, 8)}…` : "Creating"}</strong>
+                </div>
+
+                <div>
+                  <span>Stage</span>
+                  <strong>{run?.current_stage || "ingest"}</strong>
+                </div>
+
+                <div>
+                  <span>Review</span>
+                  <strong>{run?.review_status || "Not required yet"}</strong>
+                </div>
+              </div>
+
+              <div className="workflow-actions">
+                {run?.status === "pending" && (
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={handleProcess}
+                    disabled={workflowLoading}
+                  >
+                    {workflowLoading ? "Processing…" : "Process document"}
+                  </button>
+                )}
+
+                {run?.status === "paused" &&
+                  run?.current_stage === "review" && (
+                    <>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        onClick={() => handleReview("approve")}
+                        disabled={workflowLoading}
+                      >
+                        {workflowLoading ? "Updating…" : "Approve"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => handleReview("reject")}
+                        disabled={workflowLoading}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+
+                {run?.status === "completed" && (
+                  <div className="workflow-complete">
+                    Document successfully approved and completed.
+                  </div>
+                )}
+
+                {run?.status === "failed" && (
+                  <div className="workflow-failed">
+                    Document processing was rejected or failed.
+                  </div>
+                )}
+              </div>
+
+              {workflowMessage && (
+                <p className="workflow-message">{workflowMessage}</p>
+              )}
+
+              {workflowError && (
+                <p className="workflow-error">{workflowError}</p>
+              )}
+            </section>
+          )}
 
           <section className="section-heading">
             <div>
