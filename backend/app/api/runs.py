@@ -12,6 +12,8 @@ from backend.app.services.orchestrator import (
     reject_run,
 )
 from backend.app.services.run_service import create_run, get_run
+from backend.app.schemas.conflict import ConflictResponse
+from backend.app.services.conflict_service import detect_conflicts, list_conflicts
 
 
 router = APIRouter(
@@ -121,3 +123,20 @@ def reject_existing_run(
             status_code=status.HTTP_409_CONFLICT,
             detail=message,
         ) from exc
+
+@router.get(
+    "/{run_id}/conflicts",
+    response_model=list[ConflictResponse],
+)
+def get_run_conflicts(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[ConflictResponse]:
+    return list_conflicts(db, run_id)
+
+@router.post("/{run_id}/conflicts", response_model=list[ConflictResponse])
+def detect_run_conflicts(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[ConflictResponse]:
+    return detect_conflicts(db, run_id)
