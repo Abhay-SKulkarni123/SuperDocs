@@ -8,9 +8,11 @@ from backend.app.schemas.document import DocumentResponse
 from backend.app.services.document_service import (
     ALLOWED_MIME_TYPES,
     create_document,
+    get_document,
 )
 from backend.app.services.run_service import get_run
-
+from backend.app.schemas.evidence import EvidenceResponse
+from backend.app.services.document_service import get_document_evidence
 
 router = APIRouter(
     prefix="/runs/{run_id}/documents",
@@ -57,3 +59,22 @@ async def upload_document(
         mime_type=file.content_type or "application/octet-stream",
         content=content,
     )
+
+@router.get(
+    "/{document_id}/evidence",
+    response_model=list[EvidenceResponse],
+)
+def list_document_evidence(
+    run_id: uuid.UUID,
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[EvidenceResponse]:
+    document = get_document(db, document_id)
+
+    if document is None or document.run_id != run_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    return get_document_evidence(db, document_id)

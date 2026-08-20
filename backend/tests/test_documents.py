@@ -104,3 +104,30 @@ def test_upload_unsupported_document() -> None:
     assert response.json() == {
         "detail": "Unsupported document type",
     }
+
+def test_list_document_evidence() -> None:
+    run_id = create_run()
+
+    content = b"SuperDocs evidence test."
+
+    response = client.post(
+        f"/runs/{run_id}/documents",
+        files={
+            "file": (
+                "evidence.txt",
+                io.BytesIO(content),
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 201
+
+    document_id = response.json()["id"]
+
+    response = client.get(
+        f"/runs/{run_id}/documents/{document_id}/evidence"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.document import Document
 from backend.app.models.run import Run
 from backend.app.services.storage_service import save_document
-
+from backend.app.models.evidence import Evidence
 
 ALLOWED_MIME_TYPES = {
     "application/pdf",
@@ -56,3 +56,15 @@ def get_document(
 ) -> Document | None:
     statement = select(Document).where(Document.id == document_id)
     return db.scalar(statement)
+
+def get_document_evidence(
+    db: Session,
+    document_id,
+) -> list[Evidence]:
+    statement = (
+        select(Evidence)
+        .where(Evidence.document_id == document_id)
+        .order_by(Evidence.created_at.asc())
+    )
+
+    return list(db.scalars(statement).all())

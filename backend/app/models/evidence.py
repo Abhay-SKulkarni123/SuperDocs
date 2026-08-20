@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db.base import Base
 from backend.app.models.document import Document
 
+from pydantic import BaseModel, ConfigDict
 
 class Evidence(Base):
     __tablename__ = "evidence"
@@ -57,3 +58,14 @@ class Evidence(Base):
         "Document",
         back_populates="evidence",
     )
+
+class EvidenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    claim: str
+    excerpt: str
+    start_offset: int | None
+    end_offset: int | None
+    created_at: datetime
