@@ -27,20 +27,23 @@ def _get_run(db: Session, run_id: UUID) -> Run:
     return run
 
 
-def _get_document(db: Session, run_id: UUID) -> Document:
-    document = (
+def _get_documents(
+    db: Session,
+    run_id: UUID,
+) -> list[Document]:
+    documents = (
         db.query(Document)
         .filter(Document.run_id == run_id)
         .order_by(Document.created_at.asc())
-        .first()
+        .all()
     )
 
-    if document is None:
+    if not documents:
         raise OrchestrationError(
-            f"No document found for run {run_id}"
+            f"No documents found for run {run_id}"
         )
 
-    return document
+    return documents
 
 
 def process_run(db: Session, run_id: UUID) -> Run:
@@ -55,7 +58,7 @@ def process_run(db: Session, run_id: UUID) -> Run:
             f"{run.status.value}"
         )
 
-    document = _get_document(db, run_id)
+    documents = _get_documents(db, run_id)
 
     try:
         now = datetime.now(timezone.utc)
@@ -68,37 +71,48 @@ def process_run(db: Session, run_id: UUID) -> Run:
 
         db.commit()
 
-        extracted_text = extract_text(
-            document.storage_reference,
-            document.mime_type,
-        )
-
-        if not extracted_text.strip():
-            raise OrchestrationError(
-                "Document extraction produced no text"
+        # ---------------------------------------------------------
+        # Extraction stage
+        # ---------------------------------------------------------
+        for document in documents:
+            extracted_text = extract_text(
+                document.storage_reference,
+                document.mime_type,
             )
 
-        document.extracted_text = extracted_text
+            if not extracted_text.strip():
+                raise OrchestrationError(
+                    f"Document {document.id} extraction produced no text"
+                )
+
+            document.extracted_text = extracted_text
 
         run.current_stage = ProcessingStage.ANALYZE
         run.updated_at = datetime.now(timezone.utc)
 
         db.commit()
 
-        analysis_result = document_workflow.invoke(
-            {
-                "run_id": str(run.id),
-                "document_id": str(document.id),
-                "text": extracted_text,
-                "status": "extracted",
-            }
-        )
+        # ---------------------------------------------------------
+        # Analysis stage
+        # ---------------------------------------------------------
+        for document in documents:
+            analysis_result = document_workflow.invoke(
+                {
+                    "run_id": str(run.id),
+                    "document_id": str(document.id),
+                    "text": document.extracted_text,
+                    "status": "extracted",
+                }
+            )
 
-        document.summary = analysis_result["summary"]
-        document.word_count = analysis_result["word_count"]
-        document.character_count = analysis_result["character_count"]
-        document.sentence_count = analysis_result["sentence_count"]
+            document.summary = analysis_result["summary"]
+            document.word_count = analysis_result["word_count"]
+            document.character_count = analysis_result["character_count"]
+            document.sentence_count = analysis_result["sentence_count"]
 
+        # ---------------------------------------------------------
+        # Human review boundary
+        # ---------------------------------------------------------
         run.status = RunStatus.PAUSED
         run.current_stage = ProcessingStage.REVIEW
         run.review_status = ReviewStatus.PENDING
@@ -129,7 +143,6 @@ def process_run(db: Session, run_id: UUID) -> Run:
             db.refresh(run)
 
         raise OrchestrationError(str(exc)) from exc
-
 
 def approve_run(db: Session, run_id: UUID) -> Run:
     run = _get_run(db, run_id)

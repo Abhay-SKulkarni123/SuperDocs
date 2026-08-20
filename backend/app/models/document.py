@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 
@@ -8,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
+from backend.app.models.run import Run
 
 
 class Document(Base):
@@ -83,4 +82,10 @@ class Document(Base):
     run: Mapped["Run"] = relationship(
         "Run",
         back_populates="documents",
+    )
+
+    evidence: Mapped[list["Evidence"]] = relationship(
+        "Evidence",
+        back_populates="document",
+        cascade="all, delete-orphan",
     )
