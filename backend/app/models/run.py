@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Text
+from sqlalchemy import DateTime, Enum, Float, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -91,4 +91,34 @@ class Run(Base):
         "Document",
         back_populates="run",
         cascade="all, delete-orphan",
+    )
+
+    # Phase 21: cost and timing observability
+
+    stage_timings_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    total_duration_ms: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+
+    model_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    input_tokens: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+
+    output_tokens: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+
+    estimated_cost: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
     )
