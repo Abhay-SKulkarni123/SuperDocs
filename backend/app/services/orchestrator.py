@@ -58,14 +58,29 @@ def process_run(db: Session, run_id: UUID) -> Run:
             f"{run.status.value}"
         )
 
+    # ---------------------------------------------------------
+    # Resume from the persisted checkpoint.
+    #
+    # current_stage tells us the first stage that still needs
+    # to be completed.
+    # ---------------------------------------------------------
+    if run.current_stage in {
+        ProcessingStage.REVIEW,
+        ProcessingStage.COMMIT,
+        ProcessingStage.COMPLETE,
+    }:
+        raise OrchestrationError(
+            f"Run {run_id} has already reached "
+            f"{run.current_stage.value}"
+        )
+
     documents = _get_documents(db, run_id)
 
     try:
         now = datetime.now(timezone.utc)
 
         run.status = RunStatus.RUNNING
-        run.current_stage = ProcessingStage.EXTRACT
-        run.started_at = now
+        run.started_at = run.started_at or now
         run.updated_at = now
         run.error_message = None
 
@@ -73,60 +88,99 @@ def process_run(db: Session, run_id: UUID) -> Run:
 
         # ---------------------------------------------------------
         # Extraction stage
+        #
+        # Only execute extraction if the persisted checkpoint says
+        # extraction has not already been completed.
         # ---------------------------------------------------------
-        for document in documents:
-            extracted_text = extract_text(
-                document.storage_reference,
-                document.mime_type,
-            )
+        if run.current_stage in {
+            ProcessingStage.INGEST,
+            ProcessingStage.EXTRACT,
+        }:
+            run.current_stage = ProcessingStage.EXTRACT
+            run.updated_at = datetime.now(timezone.utc)
 
-            if not extracted_text.strip():
-                raise OrchestrationError(
-                    f"Document {document.id} extraction produced no text"
+            db.commit()
+
+            for document in documents:
+                extracted_text = extract_text(
+                    document.storage_reference,
+                    document.mime_type,
                 )
 
-            document.extracted_text = extracted_text
+                if not extracted_text.strip():
+                    raise OrchestrationError(
+                        f"Document {document.id} extraction produced no text"
+                    )
 
-        run.current_stage = ProcessingStage.ANALYZE
-        run.updated_at = datetime.now(timezone.utc)
+                document.extracted_text = extracted_text
 
-        db.commit()
+            # Persist the checkpoint BEFORE moving to analysis.
+            run.current_stage = ProcessingStage.ANALYZE
+            run.updated_at = datetime.now(timezone.utc)
+
+            db.commit()
 
         # ---------------------------------------------------------
         # Analysis stage
+        #
+        # If we resume with current_stage=ANALYZE, extraction is
+        # skipped and we continue directly here.
         # ---------------------------------------------------------
-        for document in documents:
-            analysis_result = document_workflow.invoke(
-                {
-                    "run_id": str(run.id),
-                    "document_id": str(document.id),
-                    "text": document.extracted_text,
-                    "status": "extracted",
-                }
-            )
+            if run.current_stage == ProcessingStage.ANALYZE:
+                for document in documents:
+                    if (
+                        document.summary is not None
+                        and document.word_count is not None
+                        and document.character_count is not None
+                        and document.sentence_count is not None
+                    ):
+                        continue
 
-            document.summary = analysis_result["summary"]
-            document.word_count = analysis_result["word_count"]
-            document.character_count = analysis_result["character_count"]
-            document.sentence_count = analysis_result["sentence_count"]
+                    if not document.extracted_text:
+                        raise OrchestrationError(
+                            f"Document {document.id} has no extracted text"
+                        )
 
-        # ---------------------------------------------------------
-        # Human review boundary
-        # ---------------------------------------------------------
-        run.status = RunStatus.PAUSED
-        run.current_stage = ProcessingStage.REVIEW
-        run.review_status = ReviewStatus.PENDING
-        run.updated_at = datetime.now(timezone.utc)
-        run.completed_at = None
+                    analysis_result = document_workflow.invoke(
+                        {
+                            "run_id": str(run.id),
+                            "document_id": str(document.id),
+                            "text": document.extracted_text,
+                            "status": "extracted",
+                        }
+                    )
 
-        db.commit()
+                    document.summary = analysis_result["summary"]
+                    document.word_count = analysis_result["word_count"]
+                    document.character_count = analysis_result[
+                        "character_count"
+                    ]
+                    document.sentence_count = analysis_result[
+                        "sentence_count"
+                    ]
 
-        db.refresh(run)
+                    db.commit()
 
-        return run
+            # ---------------------------------------------------------
+            # Human review boundary
+            # ---------------------------------------------------------
+            run.status = RunStatus.PAUSED
+            run.current_stage = ProcessingStage.REVIEW
+            run.review_status = ReviewStatus.PENDING
+            run.updated_at = datetime.now(timezone.utc)
+            run.completed_at = None
+
+            db.commit()
+
+            db.refresh(run)
+
+            return run
 
     except OrchestrationError:
         db.rollback()
+
+        # Keep the persisted checkpoint intact.
+        # The next invocation can resume from current_stage.
         raise
 
     except Exception as exc:
