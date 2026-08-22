@@ -1,7 +1,7 @@
 """add document evidence
 
 Revision ID: 6e664511281e
-Revises: xxxxxxxxxxxx
+Revises: a82adeffca05
 Create Date: 2026-08-20 14:43:18.246619
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 revision: str = '6e664511281e'
-down_revision: Union[str, None] = 'xxxxxxxxxxxx'
+down_revision: Union[str, None] = 'a82adeffca05'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
