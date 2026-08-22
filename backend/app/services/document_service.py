@@ -44,6 +44,7 @@ def create_document(
         metadata_json=json.dumps(
             {
                 "size_bytes": len(content),
+                "extraction_completed": False,
             }
         ),
         extracted_text=extracted_text,
