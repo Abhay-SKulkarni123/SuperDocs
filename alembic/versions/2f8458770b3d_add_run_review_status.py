@@ -49,10 +49,15 @@ def downgrade() -> None:
     op.drop_column("runs", "review_status")
 
     review_status = sa.Enum(
-        "PENDING",
-        "APPROVED",
-        "REJECTED",
-        name="review_status",
-    )
+        "open",
+        "resolved",
+        name="finding_status",
+    ).drop(op.get_bind(), checkfirst=True)
+
+    sa.Enum(
+        "conflict",
+        "rule_failure",
+        name="finding_type",
+    ).drop(op.get_bind(), checkfirst=True)
 
     review_status.drop(op.get_bind(), checkfirst=True)

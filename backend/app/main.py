@@ -4,6 +4,7 @@ from backend.app.api.runs import router as runs_router
 from backend.app.core.database import check_database_connection
 from backend.app.api.documents import router as documents_router
 from backend.app.api.rules import router as rules_router
+from backend.app.api.findings import router as findings_router
 
 app = FastAPI(
     title="SuperDocs Document Intelligence Platform",
@@ -14,6 +15,7 @@ app = FastAPI(
 app.include_router(runs_router)
 app.include_router(documents_router)
 app.include_router(rules_router)
+app.include_router(findings_router)
 
 app.add_middleware(
     CORSMiddleware,
