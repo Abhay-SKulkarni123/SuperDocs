@@ -28,6 +28,11 @@ def create_document(
         content=content,
     )
 
+    extracted_text = None
+
+    if mime_type == "text/plain":
+        extracted_text = content.decode("utf-8")
+
     document = Document(
         id=uuid.uuid4(),
         run_id=run.id,
@@ -41,6 +46,7 @@ def create_document(
                 "size_bytes": len(content),
             }
         ),
+        extracted_text=extracted_text,
     )
 
     db.add(document)

@@ -1,6 +1,9 @@
 import uuid
+
 from fastapi.testclient import TestClient
+
 from backend.app.main import app
+
 
 client = TestClient(app)
 
@@ -51,26 +54,38 @@ def test_get_missing_run() -> None:
         "detail": "Run not found",
     }
 
-def test_detect_conflict_between_documents(client, db_session):
-    # Create a run
+
+def test_detect_conflict_between_documents() -> None:
     response = client.post("/runs")
     assert response.status_code == 201
+
     run_id = response.json()["id"]
 
-    # Create two documents through the existing API
     first = client.post(
         f"/runs/{run_id}/documents",
-        files={"file": ("first.txt", b"Inspection interval is 30 days", "text/plain")},
+        files={
+            "file": (
+                "first.txt",
+                b"Inspection interval is 30 days",
+                "text/plain",
+            )
+        },
     )
+
     second = client.post(
         f"/runs/{run_id}/documents",
-        files={"file": ("second.txt", b"Inspection interval is 45 days", "text/plain")},
+        files={
+            "file": (
+                "second.txt",
+                b"Inspection interval is 45 days",
+                "text/plain",
+            )
+        },
     )
 
     assert first.status_code in (200, 201)
     assert second.status_code in (200, 201)
 
-    # Detect conflicts
     response = client.post(f"/runs/{run_id}/conflicts")
 
     assert response.status_code == 200
@@ -81,7 +96,7 @@ def test_detect_conflict_between_documents(client, db_session):
     assert "inspection interval" in conflicts[0]["title"].lower()
 
 
-def test_get_run_conflicts(client):
+def test_get_run_conflicts() -> None:
     response = client.post("/runs")
     assert response.status_code == 201
 
@@ -93,7 +108,7 @@ def test_get_run_conflicts(client):
     assert response.json() == []
 
 
-def test_conflict_detection_is_idempotent(client):
+def test_conflict_detection_is_idempotent() -> None:
     response = client.post("/runs")
     assert response.status_code == 201
 
@@ -101,18 +116,36 @@ def test_conflict_detection_is_idempotent(client):
 
     first = client.post(
         f"/runs/{run_id}/documents",
-        files={"file": ("first.txt", b"Inspection interval is 30 days", "text/plain")},
+        files={
+            "file": (
+                "first.txt",
+                b"Inspection interval is 30 days",
+                "text/plain",
+            )
+        },
     )
+
     second = client.post(
         f"/runs/{run_id}/documents",
-        files={"file": ("second.txt", b"Inspection interval is 45 days", "text/plain")},
+        files={
+            "file": (
+                "second.txt",
+                b"Inspection interval is 45 days",
+                "text/plain",
+            )
+        },
     )
 
     assert first.status_code in (200, 201)
     assert second.status_code in (200, 201)
 
-    first_detection = client.post(f"/runs/{run_id}/conflicts")
-    second_detection = client.post(f"/runs/{run_id}/conflicts")
+    first_detection = client.post(
+        f"/runs/{run_id}/conflicts"
+    )
+
+    second_detection = client.post(
+        f"/runs/{run_id}/conflicts"
+    )
 
     assert first_detection.status_code == 200
     assert second_detection.status_code == 200
@@ -121,5 +154,6 @@ def test_conflict_detection_is_idempotent(client):
     assert len(second_detection.json()) == 0
 
     listed = client.get(f"/runs/{run_id}/conflicts")
+
     assert listed.status_code == 200
     assert len(listed.json()) == 1
